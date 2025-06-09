@@ -58,7 +58,7 @@ export class AppController {
     const token = generateToken(safeTitle, expires, ip);
 
     return {
-      hlsUrl: `http://localhost:3000/secure/${safeTitle}.m3u8?expires=${expires}&token=${token}`
+      hlsUrl: `/secure/${safeTitle}.m3u8?expires=${expires}&token=${token}`
     };
   }
 
