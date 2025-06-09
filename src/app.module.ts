@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VideosModule } from './videos/videos.module';
 import { StreamController } from './stream.controller';
+import {VideoStatusScannerService} from "./utils/VideoStatusScannerService";
 
 @Module({
   imports: [
@@ -20,6 +21,6 @@ import { StreamController } from './stream.controller';
     VideosModule,
   ],
   controllers: [AppController,StreamController],
-  providers: [AppService],
+  providers: [AppService,    VideoStatusScannerService],
 })
 export class AppModule {}

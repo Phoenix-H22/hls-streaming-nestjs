@@ -9,6 +9,7 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 import slugify from 'slugify';
 import * as crypto from 'crypto';
+import { spawn } from 'child_process';
 
 @Injectable()
 export class VideosService {
@@ -65,7 +66,7 @@ export class VideosService {
         writeStream.end();
         fs.rmdirSync(tempDir, { recursive: true });
 
-        await this.convertToHLS(finalPath, `./storage/videos/hls/${safeTitle}`, safeTitle);
+        this.convertToHLSInBackground(finalPath, `./storage/videos/hls/${safeTitle}`, safeTitle);
 
         // ✅ Save to database
         // @ts-ignore
@@ -77,8 +78,32 @@ export class VideosService {
             path: hlsPath, // ✅ سجل مسار m3u8
             uploadTarget: 'local',
             progress: 100,
-            status: 'completed',
+            status: 'processing',
+        });
+    }
+    convertToHLSInBackground(inputPath: string, outputDir: string, title: string) {
+        const safeTitle = slugify(title, { lower: true, strict: true });
+        fs.mkdirSync(outputDir, { recursive: true });
+
+        const m3u8Path = path.join(outputDir, `${safeTitle}.m3u8`);
+        const ffmpegArgs = [
+            '-i', inputPath,
+            '-codec:', 'copy',
+            '-start_number', '0',
+            '-hls_time', '10',
+            '-hls_list_size', '0',
+            '-f', 'hls',
+            m3u8Path
+        ];
+
+        const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
+            detached: true,
+            stdio: 'ignore'
         });
 
+        ffmpeg.unref();
+
+        // You could also create a file like: `${outputDir}/.processing`
+        // and remove it later in a simple cron job or status watcher
     }
 }
