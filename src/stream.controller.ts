@@ -27,7 +27,7 @@ export class StreamController {
 
         // ✅ بدل origin، تحقق من referer لو حبيت (اختياري)
         const referer = req.headers['referer'] || '';
-        if (!referer.includes('localhost') && !referer.includes('/watch')) {
+        if (!referer.includes('hls-nest.phoenixtechs.net') && !referer.includes('/watch')) {
             return res.status(403).end();
         }
 
@@ -66,7 +66,7 @@ export class StreamController {
         }
         // 2) only your domain
         const referer = req.headers['referer'] || '';
-        if (!referer.includes('localhost') && !referer.includes('/watch')) {
+        if (!referer.includes('hls-nest.phoenixtechs.net') && !referer.includes('/watch')) {
             return res.status(403).end('#EXTM3U\n#EXT-X-ENDLIST');
         }
 
