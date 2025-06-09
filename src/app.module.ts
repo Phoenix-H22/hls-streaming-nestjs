@@ -11,10 +11,10 @@ import {VideoStatusScannerService} from "./utils/VideoStatusScannerService";
     TypeOrmModule.forRoot({
       type: 'mysql',
       host: 'localhost',
-      port: 33060,
-      username: 'root',
-      password: '',
-      database: 'hlsstreaming',
+      port: 3306,
+      username: 'hls',
+      password: 'axaS9b1Xkz1mfgv74TWj',
+      database: 'hls',
       autoLoadEntities: true,
       synchronize: true, // ✅ only for development!
     }),
