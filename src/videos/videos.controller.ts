@@ -13,6 +13,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Get } from '@nestjs/common';
 import { Video } from './video.entity';
+import slugify from "slugify";
 @Controller('videos')
 export class VideosController {
     constructor(private readonly videosService: VideosService) {}
@@ -41,9 +42,11 @@ export class VideosController {
         if (!title || !chunkNumber || !totalChunks) {
             throw new BadRequestException('Missing required fields.');
         }
+        const safeTitle = slugify(title, { lower: true, strict: true });
+
 
         // Move the chunk to a dedicated folder based on title
-        const chunkDir = `./storage/temp_chunks/${title}.mp4`;
+        const chunkDir = `./storage/temp_chunks/${safeTitle}.mp4`;
         const oldPath = file.path;
         const newDir = path.resolve(chunkDir);
         const newPath = path.join(newDir, `chunk_${chunkNumber}`);
@@ -52,12 +55,12 @@ export class VideosController {
         fs.renameSync(oldPath, newPath);
 
         const isComplete = await this.videosService.checkAllChunksExist(
-            title,
+            safeTitle,
             +totalChunks,
         );
 
         if (isComplete) {
-            await this.videosService.mergeChunks(title, +totalChunks);
+            await this.videosService.mergeChunks(safeTitle, +totalChunks);
         }
 
         return { status: true, complete: isComplete };
