@@ -1,6 +1,8 @@
 import * as path from 'node:path';
 
-const STORAGE_ROOT = path.resolve('storage');
+// STORAGE_DIR exists so the test suite can use a temporary folder. It is read
+// when this module loads, before .env is parsed, so it is not a .env setting.
+const STORAGE_ROOT = path.resolve(process.env.STORAGE_DIR || 'storage');
 const CHUNKS_ROOT = path.join(STORAGE_ROOT, 'temp_chunks');
 const VIDEOS_ROOT = path.join(STORAGE_ROOT, 'videos');
 
