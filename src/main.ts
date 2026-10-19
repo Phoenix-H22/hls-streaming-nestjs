@@ -14,16 +14,20 @@ async function bootstrap() {
   // Add security headers on every response
   app.use((req, res, next) => {
     // Only your domain may embed this site in an iframe
-      res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://hls-nest.phoenixtechs.net");
+    res.setHeader(
+      'Content-Security-Policy',
+      "frame-ancestors 'self' https://hls-nest.phoenixtechs.net",
+    );
     // Legacy header for older browsers
     res.setHeader('X-Frame-Options', 'SAMEORIGIN'); // أو ALLOW-FROM https://yourdomain.com
     next();
   });
   app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+    console.log(
+      `[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`,
+    );
     next();
   });
-
 
   app.enableCors({ origin: true, credentials: true });
   await app.listen(3006);

@@ -1,16 +1,24 @@
-import {BadRequestException, Controller, ForbiddenException, Get, Query, Render, Req} from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  ForbiddenException,
+  Get,
+  Query,
+  Render,
+  Req,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Video } from './videos/video.entity';
 import { generateToken, verifyToken } from './utils/token';
 import * as crypto from 'crypto';
-import * as fs from "node:fs";
+import * as fs from 'node:fs';
 
 @Controller()
 export class AppController {
   constructor(
-      @InjectRepository(Video)
-      private readonly videoRepo: Repository<Video>,
+    @InjectRepository(Video)
+    private readonly videoRepo: Repository<Video>,
   ) {}
 
   @Get('/')
@@ -52,17 +60,16 @@ export class AppController {
       throw new BadRequestException('Video not found');
     }
 
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
-        || ((req as any).connection?.remoteAddress ?? '');
+    const ip =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      ((req as any).connection?.remoteAddress ?? '');
     const expires = Math.floor(Date.now() / 1000) + 60 * 5;
     const token = generateToken(safeTitle, expires, ip);
 
     return {
-      hlsUrl: `/secure/${safeTitle}.m3u8?expires=${expires}&token=${token}`
+      hlsUrl: `/secure/${safeTitle}.m3u8?expires=${expires}&token=${token}`,
     };
   }
-
-
 
   getHello() {
     return undefined;

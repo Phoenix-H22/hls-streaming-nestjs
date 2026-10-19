@@ -8,6 +8,5 @@ import { Video } from './video.entity';
   controllers: [VideosController],
   providers: [VideosService],
   exports: [TypeOrmModule], // ✅ علشان نقدر نستخدم Video repo بره
-
 })
 export class VideosModule {}

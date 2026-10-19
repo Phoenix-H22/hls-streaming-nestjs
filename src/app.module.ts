@@ -5,9 +5,14 @@ import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VideosModule } from './videos/videos.module';
 import { StreamController } from './stream.controller';
-import {VideoStatusScannerService} from "./utils/VideoStatusScannerService";
+import { VideoStatusScannerService } from './utils/VideoStatusScannerService';
 
-const REQUIRED_ENV = ['DB_USERNAME', 'DB_PASSWORD', 'DB_DATABASE', 'STREAM_SECRET'];
+const REQUIRED_ENV = [
+  'DB_USERNAME',
+  'DB_PASSWORD',
+  'DB_DATABASE',
+  'STREAM_SECRET',
+];
 
 @Module({
   imports: [
@@ -16,7 +21,9 @@ const REQUIRED_ENV = ['DB_USERNAME', 'DB_PASSWORD', 'DB_DATABASE', 'STREAM_SECRE
       validate: (env) => {
         const missing = REQUIRED_ENV.filter((key) => !env[key]);
         if (missing.length) {
-          throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+          throw new Error(
+            `Missing required environment variables: ${missing.join(', ')}`,
+          );
         }
         return env;
       },
@@ -36,7 +43,7 @@ const REQUIRED_ENV = ['DB_USERNAME', 'DB_PASSWORD', 'DB_DATABASE', 'STREAM_SECRE
     }),
     VideosModule,
   ],
-  controllers: [AppController,StreamController],
-  providers: [AppService,    VideoStatusScannerService],
+  controllers: [AppController, StreamController],
+  providers: [AppService, VideoStatusScannerService],
 })
 export class AppModule {}
