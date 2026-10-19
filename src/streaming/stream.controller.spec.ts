@@ -43,12 +43,13 @@ describe('StreamController', () => {
     const expires = inFiveMinutes();
     const token = signer.signPlaylist(SLUG, expires, VIEWER_IP);
 
-    const playlist = await api.playlist(
+    const playlistFile = await api.playlist(
       `${SLUG}.m3u8`,
       String(expires),
       token,
       request(),
     );
+    const playlist = await readAll(playlistFile.getStream());
     const segmentUrl = new URL(
       playlist.split('\n').find((line) => line.startsWith('/secure/')) ?? '',
       'http://localhost',
@@ -133,9 +134,8 @@ describe('StreamController', () => {
         request(VIEWER_IP, referer),
       );
 
-    await expect(
-      ask('https://videos.example.com/watch?video=intro'),
-    ).resolves.toContain('#EXTM3U');
+    const allowed = await ask('https://videos.example.com/watch?video=intro');
+    expect(await readAll(allowed.getStream())).toContain('#EXTM3U');
     await expect(ask('https://elsewhere.example/watch')).rejects.toBeInstanceOf(
       ForbiddenException,
     );

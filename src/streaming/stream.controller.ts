@@ -33,14 +33,13 @@ export class StreamController {
 
   /** Serves the playlist with every segment URL rewritten to a signed /secure URL. */
   @Get(':file')
-  @Header('Content-Type', 'application/vnd.apple.mpegurl')
   @Header('Cache-Control', 'no-store')
   async playlist(
     @Param('file') file: string,
     @Query('expires') expires: string,
     @Query('token') token: string,
     @Req() req: Request,
-  ): Promise<string> {
+  ): Promise<StreamableFile> {
     const slug = PLAYLIST_FILE.exec(file)?.[1];
     const expiry = this.checkRequest(req, expires, token);
     if (
@@ -55,11 +54,14 @@ export class StreamController {
         throw new NotFoundException('Video not found');
       },
     );
-    return this.signer.rewritePlaylist(playlist, slug, expiry);
+    // Content types are set on the file, not with @Header, so error responses stay JSON.
+    return new StreamableFile(
+      Buffer.from(this.signer.rewritePlaylist(playlist, slug, expiry)),
+      { type: 'application/vnd.apple.mpegurl' },
+    );
   }
 
   @Get(':slug/:segment')
-  @Header('Content-Type', 'video/mp2t')
   async segment(
     @Param('slug') slug: string,
     @Param('segment') segment: string,
@@ -80,7 +82,9 @@ export class StreamController {
     await access(filePath).catch(() => {
       throw new NotFoundException('Segment not found');
     });
-    return new StreamableFile(createReadStream(filePath));
+    return new StreamableFile(createReadStream(filePath), {
+      type: 'video/mp2t',
+    });
   }
 
   /** Shared checks for both routes; returns the parsed expiry (Unix seconds). */
