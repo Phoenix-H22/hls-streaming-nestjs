@@ -1,98 +1,67 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# HLS Streaming with NestJS
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A NestJS service that takes large video uploads in chunks, packages them as HLS with FFmpeg, and serves playback through short-lived HMAC-signed playlist and segment URLs.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## How it works
 
-## Description
+1. **Chunked upload** — the upload page (`views/index.ejs`) splits the file into 5 MB pieces and posts each one to `POST /videos/upload-chunk` with `title`, `chunkNumber` (1-based) and `totalChunks`. Chunks are stored under `storage/temp_chunks/<slug>.mp4/`.
+2. **Merge** — once every chunk is present, the service joins them into `storage/videos/original/<slug>.mp4` and saves a `videos` row with status `processing`.
+3. **HLS packaging** — FFmpeg runs as a detached background process with stream copy (`-codec: copy`, 10-second segments), writing `storage/videos/hls/<slug>/<slug>.m3u8` and its `.ts` segments. Streams are not re-encoded, so the source must already use HLS-compatible codecs (for example H.264/AAC).
+4. **Status tracking** — `VideoStatusScannerService` checks processing videos every 15 seconds and marks them `completed` when the playlist exists.
+5. **Signed playback** — `GET /watch?title=<slug>` renders a Video.js player with a playlist URL that expires after 5 minutes. The token is an HMAC-SHA256 of the slug, expiry and client IP.
+6. **Segment rewriting** — `GET /secure/<slug>.m3u8` checks the expiry, referer and token, then rewrites every segment line to `/secure/<slug>/<segment>.ts` with its own HMAC token. `GET /secure/:folder/:chunk` verifies that token before streaming the segment.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Responses also send `Content-Security-Policy: frame-ancestors` and `X-Frame-Options: SAMEORIGIN` so pages can only be framed by the same origin and `hls-nest.phoenixtechs.net` (set in `src/main.ts`).
 
-## Project setup
+## Stack
 
-```bash
-$ npm install
-```
+NestJS 11 · TypeScript · TypeORM · MySQL · FFmpeg · Multer · EJS · Video.js
 
-## Compile and run the project
+## Source map
 
-```bash
-# development
-$ npm run start
+| Path | Responsibility |
+| --- | --- |
+| `src/videos/videos.controller.ts` | Video list and chunk upload endpoint |
+| `src/videos/videos.service.ts` | Chunk checks, merge, background FFmpeg packaging |
+| `src/videos/video.entity.ts` | `videos` table: paths, status, progress |
+| `src/stream.controller.ts` | Signed playlist and segment delivery |
+| `src/utils/token.ts` | HMAC token generation |
+| `src/utils/VideoStatusScannerService.ts` | Marks finished conversions as completed |
+| `src/app.controller.ts` | Upload page and watch page |
+| `views/` | EJS templates for upload and playback |
 
-# watch mode
-$ npm run start:dev
+## Requirements
 
-# production mode
-$ npm run start:prod
-```
+- Node.js and npm
+- MySQL
+- FFmpeg available on `PATH`
 
-## Run tests
+## Setup
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm install
+cp .env.example .env
 ```
 
-## Deployment
+Fill in `.env`. The app refuses to start if `DB_USERNAME`, `DB_PASSWORD`, `DB_DATABASE` or `STREAM_SECRET` is missing.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Variable | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `DB_HOST` | No | `localhost` | MySQL host |
+| `DB_PORT` | No | `3306` | MySQL port |
+| `DB_USERNAME` | Yes | — | MySQL user |
+| `DB_PASSWORD` | Yes | — | MySQL password |
+| `DB_DATABASE` | Yes | — | MySQL database |
+| `STREAM_SECRET` | Yes | — | HMAC key for playback tokens |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+TypeORM `synchronize` is enabled, so the `videos` table is created on first start. Turn it off and use migrations before relying on this in production.
+
+## Run
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run start:dev    # watch mode
+npm run build
+npm run start:prod   # runs dist/main
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+The server listens on port `3006`. Open `http://localhost:3006/` to upload a video and get a watch link.
