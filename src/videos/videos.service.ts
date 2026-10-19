@@ -1,127 +1,114 @@
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Video } from './video.entity';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { Injectable } from '@nestjs/common';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-const execAsync = promisify(exec);
-import slugify from 'slugify';
-import * as crypto from 'crypto';
-import { spawn } from 'child_process';
+import { InjectRepository } from '@nestjs/typeorm';
+import { existsSync } from 'node:fs';
+import { access, mkdir, rename, rm } from 'node:fs/promises';
+import { Repository } from 'typeorm';
+import { storagePaths, toStoredPath } from '../storage-paths';
+import { HlsPackagerService } from './hls-packager.service';
+import { mergeChunks } from './merge-chunks';
+import { uniqueSlug } from './slug';
+import { UploadChunkDto } from './upload-chunk.dto';
+import { Video } from './video.entity';
+
+export interface ChunkResult {
+  complete: boolean;
+  slug?: string;
+}
 
 @Injectable()
 export class VideosService {
+  /** Upload ids whose final chunk is being merged, so a retried last chunk cannot merge twice. */
+  private readonly finalizing = new Set<string>();
+
   constructor(
     @InjectRepository(Video)
-    private readonly videoRepo: Repository<Video>,
+    private readonly videos: Repository<Video>,
+    private readonly packager: HlsPackagerService,
   ) {}
-  async convertToHLS(inputPath: string, outputDir: string, title: string) {
-    const safeTitle = slugify(title, { lower: true, strict: true });
-    fs.mkdirSync(outputDir, { recursive: true });
 
-    const m3u8Path = path.join(outputDir, `${safeTitle}.m3u8`);
-    const cmd = `ffmpeg -i "${inputPath}" -codec: copy -start_number 0 -hls_time 10 -hls_list_size 0 -f hls "${m3u8Path}"`;
+  findAll(): Promise<Video[]> {
+    return this.videos.find({ order: { createdAt: 'DESC' } });
+  }
 
+  findCompletedBySlug(slug: string): Promise<Video | null> {
+    return this.videos.findOneBy({ slug, status: 'completed' });
+  }
+
+  /** Stores one chunk; when it was the last missing one, merges the upload and starts packaging. */
+  async receiveChunk(
+    dto: UploadChunkDto,
+    tempPath: string,
+  ): Promise<ChunkResult> {
+    await mkdir(storagePaths.uploadDir(dto.uploadId), { recursive: true });
+    await rename(tempPath, storagePaths.chunk(dto.uploadId, dto.chunkNumber));
+
+    if (
+      this.finalizing.has(dto.uploadId) ||
+      !(await this.hasAllChunks(dto.uploadId, dto.totalChunks))
+    ) {
+      return { complete: false };
+    }
+
+    this.finalizing.add(dto.uploadId);
     try {
-      await execAsync(cmd);
-    } catch (error) {
-      console.error('FFmpeg conversion failed:', error);
-      throw new Error('HLS conversion failed');
+      const video = await this.finalizeUpload(dto);
+      return { complete: true, slug: video.slug };
+    } finally {
+      this.finalizing.delete(dto.uploadId);
     }
   }
 
-  async checkAllChunksExist(
-    title: string,
+  private async hasAllChunks(
+    uploadId: string,
     totalChunks: number,
   ): Promise<boolean> {
-    const safeTitle = slugify(title, { lower: true, strict: true });
-
-    const tempDir = path.resolve(`./storage/temp_chunks/${safeTitle}.mp4`);
-    for (let i = 1; i <= totalChunks; i++) {
-      if (!fs.existsSync(path.join(tempDir, `chunk_${i}`))) return false;
+    for (let n = 1; n <= totalChunks; n++) {
+      try {
+        await access(storagePaths.chunk(uploadId, n));
+      } catch {
+        return false;
+      }
     }
     return true;
   }
-  async findAll(): Promise<Video[]> {
-    return this.videoRepo.find({
-      order: { createdAt: 'DESC' },
+
+  private async finalizeUpload(
+    dto: UploadChunkDto,
+  ): Promise<Video & { slug: string }> {
+    const slug = await uniqueSlug(dto.title, (candidate) =>
+      this.isSlugTaken(candidate),
+    );
+    const originalPath = storagePaths.original(slug);
+    const chunkPaths = Array.from({ length: dto.totalChunks }, (_, i) =>
+      storagePaths.chunk(dto.uploadId, i + 1),
+    );
+
+    await mergeChunks(chunkPaths, originalPath);
+    await rm(storagePaths.uploadDir(dto.uploadId), {
+      recursive: true,
+      force: true,
     });
-  }
 
-  async mergeChunks(title: string, totalChunks: number): Promise<void> {
-    const safeTitle = slugify(title, { lower: true, strict: true });
-    const tempDir = path.resolve(`./storage/temp_chunks/${safeTitle}.mp4`);
-    const finalPath = path.resolve(
-      `./storage/videos/original/${safeTitle}.mp4`,
-    );
-    fs.mkdirSync(path.dirname(finalPath), { recursive: true });
-
-    const writeStream = fs.createWriteStream(finalPath);
-
-    for (let i = 1; i <= totalChunks; i++) {
-      const chunkPath = path.join(tempDir, `chunk_${i}`);
-      const data = fs.readFileSync(chunkPath);
-      writeStream.write(data);
-      fs.unlinkSync(chunkPath);
-    }
-
-    writeStream.end();
-    fs.rmdirSync(tempDir, { recursive: true });
-
-    this.convertToHLSInBackground(
-      finalPath,
-      `./storage/videos/hls/${safeTitle}`,
-      safeTitle,
-    );
-
-    // ✅ Save to database
-    // @ts-ignore
-    const hlsPath = `storage/videos/hls/${safeTitle}/${safeTitle}.m3u8`;
-
-    await this.videoRepo.save({
-      title,
-      originalPath: `storage/videos/original/${safeTitle}.mp4`,
-      path: hlsPath, // ✅ سجل مسار m3u8
+    const video = await this.videos.save({
+      title: dto.title,
+      slug,
+      originalPath: toStoredPath(originalPath),
+      path: toStoredPath(storagePaths.playlist(slug)),
       uploadTarget: 'local',
       progress: 100,
       status: 'processing',
     });
+    const saved = { ...video, slug };
+    this.packager.start(saved);
+    return saved;
   }
-  convertToHLSInBackground(
-    inputPath: string,
-    outputDir: string,
-    title: string,
-  ) {
-    const safeTitle = slugify(title, { lower: true, strict: true });
-    fs.mkdirSync(outputDir, { recursive: true });
 
-    const m3u8Path = path.join(outputDir, `${safeTitle}.m3u8`);
-    const ffmpegArgs = [
-      '-i',
-      inputPath,
-      '-codec:',
-      'copy',
-      '-start_number',
-      '0',
-      '-hls_time',
-      '10',
-      '-hls_list_size',
-      '0',
-      '-f',
-      'hls',
-      m3u8Path,
-    ];
-
-    const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
-      detached: true,
-      stdio: 'ignore',
-    });
-
-    ffmpeg.unref();
-
-    // You could also create a file like: `${outputDir}/.processing`
-    // and remove it later in a simple cron job or status watcher
+  /** Checks files as well as rows: uploads made before slugs were stored may own a folder without a slug. */
+  private async isSlugTaken(slug: string): Promise<boolean> {
+    return (
+      existsSync(storagePaths.original(slug)) ||
+      existsSync(storagePaths.hlsDir(slug)) ||
+      (await this.videos.existsBy({ slug }))
+    );
   }
 }

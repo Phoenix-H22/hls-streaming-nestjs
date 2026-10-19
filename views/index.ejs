@@ -63,13 +63,13 @@
                     <td><%= video.title %></td>
                     <td><%= video.originalPath %></td>
                     <td>
-                        <span class="badge bg-<%= video.status === 'completed' ? 'success' : 'secondary' %>">
+                        <span class="badge bg-<%= { completed: 'success', failed: 'danger' }[video.status] || 'secondary' %>">
                             <%= video.status %>
                         </span>
                     </td>
                     <td>
-                        <% if (video.status === 'completed') { %>
-                            <a href="<%= video.signedUrl %>" class="btn btn-sm btn-primary">▶ Watch</a>
+                        <% if (video.watchUrl) { %>
+                            <a href="<%= video.watchUrl %>" class="btn btn-sm btn-primary">▶ Watch</a>
                         <% } else { %>
                             <span class="text-muted">Not ready</span>
                         <% } %>
@@ -84,37 +84,43 @@
 </div>
 
 <script>
+    const CHUNK_SIZE = 5 * 1024 * 1024;
+
     document.getElementById('uploadForm').addEventListener('submit', async function (e) {
         e.preventDefault();
         const form = e.target;
         const file = form.video.files[0];
         const title = form.title.value;
-        const chunkSize = 5 * 1024 * 1024;
-        const totalChunks = Math.ceil(file.size / chunkSize);
-        let currentChunk = 0;
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        // One id per file keeps this upload's chunks apart from any other upload.
+        const uploadId = crypto.randomUUID();
+        const bar = document.getElementById('uploadProgress');
+        const submit = form.querySelector('button[type="submit"]');
 
+        submit.disabled = true;
+        bar.classList.remove('bg-danger');
         document.getElementById('progressWrapper').style.display = 'block';
 
-        while (currentChunk < totalChunks) {
+        for (let chunkNumber = 1; chunkNumber <= totalChunks; chunkNumber++) {
+            const start = (chunkNumber - 1) * CHUNK_SIZE;
             const formData = new FormData();
-            const start = currentChunk * chunkSize;
-            const end = Math.min(start + chunkSize, file.size);
-            const blob = file.slice(start, end);
-
-            formData.append('video', blob);
+            // Text fields go first so they are parsed before the file part.
+            formData.append('uploadId', uploadId);
             formData.append('title', title);
-            formData.append('chunkNumber', currentChunk + 1);
+            formData.append('chunkNumber', chunkNumber);
             formData.append('totalChunks', totalChunks);
-            formData.append('upload_target', form.upload_target.value);
+            formData.append('video', file.slice(start, start + CHUNK_SIZE));
 
-            await fetch('/videos/upload-chunk', {
-                method: 'POST',
-                body: formData,
-            });
+            const response = await fetch('/videos/upload-chunk', { method: 'POST', body: formData });
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}));
+                bar.classList.add('bg-danger');
+                bar.innerText = 'Upload failed: ' + [].concat(error.message || response.statusText).join(', ');
+                submit.disabled = false;
+                return;
+            }
 
-            currentChunk++;
-            const progress = Math.floor((currentChunk / totalChunks) * 100);
-            const bar = document.getElementById('uploadProgress');
+            const progress = Math.floor((chunkNumber / totalChunks) * 100);
             bar.style.width = progress + '%';
             bar.innerText = progress + '%';
         }

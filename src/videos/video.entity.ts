@@ -14,6 +14,13 @@ export class Video {
   @Column()
   title: string;
 
+  /**
+   * URL and folder name for the video. Nullable only so rows created before
+   * this column existed can be backfilled on startup.
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  slug: string | null;
+
   @Column({ nullable: true })
   path: string;
 

@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { HlsPackagerService } from './hls-packager.service';
+import { Video } from './video.entity';
+import { VideoRecoveryService } from './video-recovery.service';
 import { VideosController } from './videos.controller';
 import { VideosService } from './videos.service';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { Video } from './video.entity';
+
 @Module({
   imports: [TypeOrmModule.forFeature([Video])],
   controllers: [VideosController],
-  providers: [VideosService],
-  exports: [TypeOrmModule], // ✅ علشان نقدر نستخدم Video repo بره
+  providers: [VideosService, HlsPackagerService, VideoRecoveryService],
+  exports: [VideosService],
 })
 export class VideosModule {}

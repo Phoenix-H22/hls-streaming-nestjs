@@ -1,67 +1,67 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
+  Get,
   Post,
   UploadedFile,
   UseInterceptors,
-  Body,
-  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { VideosService } from './videos.service';
-import * as fs from 'fs';
-import * as path from 'path';
-import { Get } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
+import { rm } from 'node:fs/promises';
+import { storagePaths } from '../storage-paths';
+import { MAX_CHUNK_BYTES, UploadChunkDto } from './upload-chunk.dto';
 import { Video } from './video.entity';
-import slugify from 'slugify';
+import { ChunkResult, VideosService } from './videos.service';
+
 @Controller('videos')
 export class VideosController {
   constructor(private readonly videosService: VideosService) {}
+
   @Get()
-  async listVideos(): Promise<Video[]> {
+  listVideos(): Promise<Video[]> {
     return this.videosService.findAll();
   }
+
   @Post('upload-chunk')
   @UseInterceptors(
     FileInterceptor('video', {
-      storage: diskStorage({
-        destination: './storage/temp_chunks',
-        filename: (req, file, cb) => {
-          const chunkNumber = req.body.chunkNumber || 'undefined';
-          cb(null, `chunk_${chunkNumber}`);
-        },
-      }),
+      dest: storagePaths.incomingChunks,
+      limits: { fileSize: MAX_CHUNK_BYTES, files: 1 },
     }),
   )
   async uploadChunk(
-    @UploadedFile() file: Express.Multer.File,
-    @Body('title') title: string,
-    @Body('chunkNumber') chunkNumber: string,
-    @Body('totalChunks') totalChunks: string,
-  ) {
-    if (!title || !chunkNumber || !totalChunks) {
-      throw new BadRequestException('Missing required fields.');
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: Record<string, unknown>,
+  ): Promise<ChunkResult> {
+    if (!file) throw new BadRequestException('Missing video chunk.');
+
+    // Validated here rather than with a pipe so the temporary file Multer
+    // already wrote can be removed when the request is rejected.
+    try {
+      const dto = await validateChunk(body);
+      return await this.videosService.receiveChunk(dto, file.path);
+    } catch (error) {
+      await rm(file.path, { force: true });
+      throw error;
     }
-    const safeTitle = slugify(title, { lower: true, strict: true });
-
-    // Move the chunk to a dedicated folder based on title
-    const chunkDir = `./storage/temp_chunks/${safeTitle}.mp4`;
-    const oldPath = file.path;
-    const newDir = path.resolve(chunkDir);
-    const newPath = path.join(newDir, `chunk_${chunkNumber}`);
-
-    fs.mkdirSync(newDir, { recursive: true });
-    fs.renameSync(oldPath, newPath);
-
-    const isComplete = await this.videosService.checkAllChunksExist(
-      safeTitle,
-      +totalChunks,
-    );
-
-    if (isComplete) {
-      await this.videosService.mergeChunks(safeTitle, +totalChunks);
-    }
-
-    return { status: true, complete: isComplete };
   }
+}
+
+async function validateChunk(
+  body: Record<string, unknown>,
+): Promise<UploadChunkDto> {
+  const dto = plainToInstance(UploadChunkDto, body);
+  const errors = await validate(dto, { whitelist: true });
+  if (errors.length) {
+    throw new BadRequestException(
+      errors.flatMap((error) => Object.values(error.constraints ?? {})),
+    );
+  }
+  if (dto.chunkNumber > dto.totalChunks) {
+    throw new BadRequestException('chunkNumber cannot exceed totalChunks.');
+  }
+  return dto;
 }
