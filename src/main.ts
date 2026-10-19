@@ -8,10 +8,7 @@ import * as express from 'express';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // Serve static assets
-  app.useStaticAssets(join(__dirname, '..', 'storage'), {
-    prefix: '/storage/',
-  });
+  // storage/ is not served statically: playback goes through the signed /secure routes
   app.setViewEngine('ejs');
   app.setBaseViewsDir(join(__dirname, '..', 'views')); // مجلد القوالب
   // Add security headers on every response

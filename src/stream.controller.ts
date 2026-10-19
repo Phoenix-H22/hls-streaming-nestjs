@@ -7,6 +7,7 @@ import { Request, Response } from 'express';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { getStreamSecret } from './utils/token';
 
 @Controller('secure')
 export class StreamController {
@@ -31,7 +32,7 @@ export class StreamController {
             return res.status(403).end();
         }
 
-        const secret = process.env.STREAM_SECRET || 'test';
+        const secret = getStreamSecret();
         const payload = `${folder}/${chunk}|${expires}`;
         const validToken = crypto.createHmac('sha256', secret).update(payload).digest('hex');
         if (token !== validToken) {
@@ -76,7 +77,7 @@ export class StreamController {
 
         const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
             || (req.connection as any)?.remoteAddress || '';
-        const secret = process.env.STREAM_SECRET || 'test';
+        const secret = getStreamSecret();
         const safeTitle = file.replace('.m3u8', '');
         const filePath = path.resolve(`./storage/videos/hls/${safeTitle}/${safeTitle}.m3u8`);
         if (!fs.existsSync(filePath)) {

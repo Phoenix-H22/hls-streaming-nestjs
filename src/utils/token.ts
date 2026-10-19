@@ -1,11 +1,15 @@
 import * as crypto from 'crypto';
 import {Req} from "@nestjs/common";
 
-const SECRET_KEY = process.env.TOKEN_SECRET || 'your-strong-secret';
+export function getStreamSecret(): string {
+    const secret = process.env.STREAM_SECRET;
+    if (!secret) throw new Error('STREAM_SECRET is not set');
+    return secret;
+}
 
 
 export function generateToken(title: string, expires: number, ip: string): string {
-    const secret = process.env.STREAM_SECRET || 'test';
+    const secret = getStreamSecret();
     const payload = `${title}|${expires}|${ip}`;
     return crypto.createHmac('sha256', secret).update(payload).digest('hex');
 }
