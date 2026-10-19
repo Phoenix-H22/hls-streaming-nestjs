@@ -1,8 +1,8 @@
 {
-  "name": "hls-uploader",
+  "name": "hls-streaming-nestjs",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "Chunked video uploads, FFmpeg HLS packaging, and HMAC-signed playback with NestJS",
+  "author": "Abdalrhman M. Alkady",
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
@@ -20,28 +20,20 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@nestjs/bull": "^11.0.2",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.1.3",
-    "@nestjs/schedule": "^6.0.0",
-    "@nestjs/serve-static": "^5.0.3",
     "@nestjs/typeorm": "^11.0.0",
-    "axios": "^1.9.0",
-    "bull": "^4.16.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
     "ejs": "^3.1.10",
-    "fluent-ffmpeg": "^2.1.3",
-    "ioredis": "^5.6.1",
     "multer": "^2.0.1",
     "mysql2": "^3.14.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "slugify": "^1.6.6",
-    "typeorm": "^0.3.24",
-    "uuid": "^11.1.0"
+    "typeorm": "^0.3.24"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
