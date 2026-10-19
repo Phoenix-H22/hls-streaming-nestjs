@@ -4,7 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { VideosModule } from './videos/videos.module';
-import { StreamController } from './stream.controller';
+import { StreamingModule } from './streaming/streaming.module';
 
 const REQUIRED_ENV = [
   'DB_USERNAME',
@@ -41,8 +41,9 @@ const REQUIRED_ENV = [
       }),
     }),
     VideosModule,
+    StreamingModule,
   ],
-  controllers: [AppController, StreamController],
+  controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}

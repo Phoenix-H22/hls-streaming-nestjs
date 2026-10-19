@@ -6,13 +6,21 @@ import {
   Render,
   Req,
 } from '@nestjs/common';
-import { generateToken } from './utils/token';
+import type { Request } from 'express';
+import { StreamSigner } from './streaming/stream-signer';
+import { clientIp } from './streaming/client-ip';
 import { SLUG_PATTERN } from './videos/slug';
 import { VideosService } from './videos/videos.service';
 
+/** How long a watch page's playlist link stays valid. */
+const PLAYBACK_TTL_SECONDS = 5 * 60;
+
 @Controller()
 export class AppController {
-  constructor(private readonly videosService: VideosService) {}
+  constructor(
+    private readonly videosService: VideosService,
+    private readonly signer: StreamSigner,
+  ) {}
 
   @Get('/')
   @Render('index')
@@ -38,11 +46,8 @@ export class AppController {
         : null;
     if (!video) throw new NotFoundException('Video not found');
 
-    const ip =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      ((req as any).connection?.remoteAddress ?? '');
-    const expires = Math.floor(Date.now() / 1000) + 60 * 5;
-    const token = generateToken(slug, expires, ip);
+    const expires = Math.floor(Date.now() / 1000) + PLAYBACK_TTL_SECONDS;
+    const token = this.signer.signPlaylist(slug, expires, clientIp(req));
 
     return {
       title: video.title,
